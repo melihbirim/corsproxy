@@ -61,7 +61,7 @@ make lint
 
 ## Commit Message Format
 
-```
+```bash
 Type: Brief description
 
 Longer description if needed
