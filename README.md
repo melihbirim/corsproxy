@@ -5,6 +5,22 @@ A lightning-fast, simple CORS proxy server written in Go. Deploy anywhere with o
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/melihbirim/cors-proxy)
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
 
+## 🌐 Live Demo
+
+Try it now: **[https://corsproxy-8uo5.onrender.com](https://corsproxy-8uo5.onrender.com)**
+
+**Example:**
+
+```bash
+# Fetch GitHub API through the proxy
+curl "https://corsproxy-8uo5.onrender.com/?url=https://api.github.com/users/melihbirim"
+
+# Use in JavaScript
+fetch('https://corsproxy-8uo5.onrender.com/?url=https://api.example.com/data')
+  .then(r => r.json())
+  .then(data => console.log(data));
+```
+
 ## ✨ Features
 
 - ⚡ **Fast**: Written in Go for maximum performance

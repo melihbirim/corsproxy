@@ -1,9 +1,12 @@
 services:
   - type: web
-    name: cors-proxy
-    env: docker
+    name: corsproxy
+    runtime: go
     plan: free
-    dockerfilePath: ./Dockerfile
+    branch: main
+    region: virginia
+    buildCommand: go build -tags netgo -ldflags '-s -w' -o app main.go
+    startCommand: ./app
     healthCheckPath: /health
     envVars:
       - key: PORT
@@ -19,4 +22,6 @@ services:
       - key: RATE_LIMIT_PER_MINUTE
         value: 100
       - key: VERBOSE_LOGGING
-        value: false
+        value: true
+      - key: BLOCKED_HOSTS
+        value: localhost,127.0.0.1,192.168.0.0,10.0.0.0
