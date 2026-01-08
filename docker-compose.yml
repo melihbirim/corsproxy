@@ -7,6 +7,19 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
+      # Request Limits
+      - MAX_REQUEST_SIZE=10485760      # 10MB
+      - REQUEST_TIMEOUT=30s
+      - MAX_REDIRECTS=10
+      # CORS
+      - ALLOWED_ORIGINS=*
+      # Security - uncomment and configure for production
+      # - ALLOWED_HOSTS=api.github.com,api.example.com
+      # - BLOCKED_HOSTS=localhost,127.0.0.1
+      # Rate Limiting - uncomment for production
+      # - RATE_LIMIT_PER_MINUTE=100
+      # Logging
+      - VERBOSE_LOGGING=false
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]

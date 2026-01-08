@@ -27,12 +27,25 @@ cd cors-proxy
 # Run directly with Go
 go run main.go
 
+# Or use Make
+make run
+
 # Or build and run
-go build -o cors-proxy
-./cors-proxy
+make build
+./bin/cors-proxy
 ```
 
 Server starts at `http://localhost:8080`
+
+### Run Tests
+
+```bash
+# Make sure server is running in another terminal
+make test
+
+# Or run directly
+./test.sh
+```
 
 ### Using Docker
 
@@ -148,12 +161,63 @@ koyeb app create cors-proxy \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `8080` | Server port |
+| `MAX_REQUEST_SIZE` | `10485760` | Max request size in bytes (10MB default) |
+| `REQUEST_TIMEOUT` | `30s` | Request timeout (Go duration: 30s, 1m, etc) |
+| `MAX_REDIRECTS` | `10` | Maximum number of redirects to follow |
+| `ALLOWED_ORIGINS` | `*` | CORS allowed origins (* for all, or comma-separated list) |
+| `ALLOWED_HOSTS` | `` | Comma-separated list of allowed hosts (empty = all) |
+| `BLOCKED_HOSTS` | `` | Comma-separated list of blocked hosts |
+| `RATE_LIMIT_PER_MINUTE` | `0` | Rate limit per IP (0 = disabled) |
+| `VERBOSE_LOGGING` | `false` | Enable detailed request logging |
 
-### Limits
+### Production Configuration Example
 
-- **Max Request Size**: 10MB
-- **Timeout**: 30 seconds
-- **Max Redirects**: 10
+```bash
+# .env file or deployment settings
+PORT=8080
+MAX_REQUEST_SIZE=5242880              # 5MB
+REQUEST_TIMEOUT=15s
+RATE_LIMIT_PER_MINUTE=100            # 100 requests per minute per IP
+ALLOWED_ORIGINS=https://example.com,https://app.example.com,https://admin.example.com
+ALLOWED_HOSTS=api.github.com,api.stripe.com,httpbin.org
+BLOCKED_HOSTS=localhost,127.0.0.1,192.168.0.0
+VERBOSE_LOGGING=true
+```
+
+### Security Features
+
+**CORS Origins:**
+```bash
+# Allow all origins (development only)
+ALLOWED_ORIGINS=*
+
+# Allow specific origins (production recommended)
+ALLOWED_ORIGINS=https://example.com,https://app.example.com
+```
+
+**Host Filtering:**
+```bash
+# Only allow specific APIs
+ALLOWED_HOSTS=api.github.com,api.stripe.com
+
+# Block internal networks
+BLOCKED_HOSTS=localhost,127.0.0.1,192.168.0.0,10.0.0.0
+```
+
+**Rate Limiting:**
+```bash
+# Limit to 100 requests per minute per IP address
+RATE_LIMIT_PER_MINUTE=100
+```
+
+**Request Limits:**
+```bash
+# Smaller file size limit for production
+MAX_REQUEST_SIZE=5242880  # 5MB
+
+# Faster timeout for better resource usage
+REQUEST_TIMEOUT=15s
+```
 
 ## 🏗️ Project Structure
 
@@ -161,6 +225,8 @@ koyeb app create cors-proxy \
 cors-proxy/
 ├── main.go              # Main application
 ├── go.mod              # Go module file
+├── Makefile            # Build automation
+├── test.sh             # Test script
 ├── Dockerfile          # Production Docker image
 ├── Dockerfile.dev      # Development Docker image
 ├── docker-compose.yml  # Docker Compose config
@@ -168,7 +234,22 @@ cors-proxy/
 ├── render.yaml         # Render deployment config
 ├── fly.toml           # Fly.io deployment config
 ├── koyeb.json         # Koyeb deployment config
+├── .env.example       # Environment variables template
 └── README.md          # This file
+```
+
+## 🛠️ Makefile Commands
+
+```bash
+make help          # Show all available commands
+make build         # Build the binary
+make run           # Run the server
+make test          # Run tests
+make docker-build  # Build Docker image
+make docker-run    # Run Docker container
+make clean         # Clean build artifacts
+make fmt           # Format code
+make lint          # Lint code
 ```
 
 ## 🔧 API Endpoints

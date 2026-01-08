@@ -8,3 +8,15 @@ services:
     envVars:
       - key: PORT
         value: 8080
+      - key: MAX_REQUEST_SIZE
+        value: 10485760
+      - key: REQUEST_TIMEOUT
+        value: 30s
+      - key: MAX_REDIRECTS
+        value: 10
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: 100
+      - key: VERBOSE_LOGGING
+        value: false

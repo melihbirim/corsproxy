@@ -7,5 +7,13 @@
     "startCommand": "go run main.go",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
+  },
+  "variables": {
+    "MAX_REQUEST_SIZE": "10485760",
+    "REQUEST_TIMEOUT": "30s",
+    "MAX_REDIRECTS": "10",
+    "ALLOWED_ORIGINS": "*",
+    "RATE_LIMIT_PER_MINUTE": "100",
+    "VERBOSE_LOGGING": "false"
   }
 }
