@@ -1,0 +1,12 @@
+{
+  "name": "cors-proxy",
+  "type": "web",
+  "version": "1.0.0",
+  "platform": "go",
+  "buildCommand": "go build -o bin/main main.go",
+  "startCommand": "./bin/main",
+  "healthCheckPath": "/health",
+  "env": {
+    "GO_VERSION": "1.21"
+  }
+}
