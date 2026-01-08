@@ -77,24 +77,24 @@ curl "http://localhost:8080/?url=https://api.example.com/data"
 ### From JavaScript
 
 ```javascript
-fetch('http://localhost:8080/?url=https://api.example.com/data')
-  .then(response => response.json())
-  .then(data => console.log(data));
+fetch("http://localhost:8080/?url=https://api.example.com/data")
+  .then((response) => response.json())
+  .then((data) => console.log(data));
 ```
 
 ### With Custom Headers
 
 ```javascript
-fetch('http://localhost:8080/?url=https://api.example.com/data', {
-  method: 'POST',
+fetch("http://localhost:8080/?url=https://api.example.com/data", {
+  method: "POST",
   headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer token123'
+    "Content-Type": "application/json",
+    Authorization: "Bearer token123",
   },
-  body: JSON.stringify({ key: 'value' })
+  body: JSON.stringify({ key: "value" }),
 })
-.then(response => response.json())
-.then(data => console.log(data));
+  .then((response) => response.json())
+  .then((data) => console.log(data));
 ```
 
 ### Health Check
@@ -104,8 +104,9 @@ curl http://localhost:8080/health
 ```
 
 Response:
+
 ```json
-{"status":"ok","timestamp":"2026-01-08T12:00:00Z"}
+{ "status": "ok", "timestamp": "2026-01-08T12:00:00Z" }
 ```
 
 ## 🌐 One-Click Deployments
@@ -158,17 +159,17 @@ koyeb app create cors-proxy \
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `8080` | Server port |
-| `MAX_REQUEST_SIZE` | `10485760` | Max request size in bytes (10MB default) |
-| `REQUEST_TIMEOUT` | `30s` | Request timeout (Go duration: 30s, 1m, etc) |
-| `MAX_REDIRECTS` | `10` | Maximum number of redirects to follow |
-| `ALLOWED_ORIGINS` | `*` | CORS allowed origins (* for all, or comma-separated list) |
-| `ALLOWED_HOSTS` | `` | Comma-separated list of allowed hosts (empty = all) |
-| `BLOCKED_HOSTS` | `` | Comma-separated list of blocked hosts |
-| `RATE_LIMIT_PER_MINUTE` | `0` | Rate limit per IP (0 = disabled) |
-| `VERBOSE_LOGGING` | `false` | Enable detailed request logging |
+| Variable                | Default    | Description                                                |
+| ----------------------- | ---------- | ---------------------------------------------------------- |
+| `PORT`                  | `8080`     | Server port                                                |
+| `MAX_REQUEST_SIZE`      | `10485760` | Max request size in bytes (10MB default)                   |
+| `REQUEST_TIMEOUT`       | `30s`      | Request timeout (Go duration: 30s, 1m, etc)                |
+| `MAX_REDIRECTS`         | `10`       | Maximum number of redirects to follow                      |
+| `ALLOWED_ORIGINS`       | `*`        | CORS allowed origins (\* for all, or comma-separated list) |
+| `ALLOWED_HOSTS`         | ``         | Comma-separated list of allowed hosts (empty = all)        |
+| `BLOCKED_HOSTS`         | ``         | Comma-separated list of blocked hosts                      |
+| `RATE_LIMIT_PER_MINUTE` | `0`        | Rate limit per IP (0 = disabled)                           |
+| `VERBOSE_LOGGING`       | `false`    | Enable detailed request logging                            |
 
 ### Production Configuration Example
 
@@ -187,6 +188,7 @@ VERBOSE_LOGGING=true
 ### Security Features
 
 **CORS Origins:**
+
 ```bash
 # Allow all origins (development only)
 ALLOWED_ORIGINS=*
@@ -196,6 +198,7 @@ ALLOWED_ORIGINS=https://example.com,https://app.example.com
 ```
 
 **Host Filtering:**
+
 ```bash
 # Only allow specific APIs
 ALLOWED_HOSTS=api.github.com,api.stripe.com
@@ -205,12 +208,14 @@ BLOCKED_HOSTS=localhost,127.0.0.1,192.168.0.0,10.0.0.0
 ```
 
 **Rate Limiting:**
+
 ```bash
 # Limit to 100 requests per minute per IP address
 RATE_LIMIT_PER_MINUTE=100
 ```
 
 **Request Limits:**
+
 ```bash
 # Smaller file size limit for production
 MAX_REQUEST_SIZE=5242880  # 5MB
@@ -221,7 +226,7 @@ REQUEST_TIMEOUT=15s
 
 ## 🏗️ Project Structure
 
-```
+```bash
 cors-proxy/
 ├── main.go              # Main application
 ├── go.mod              # Go module file
@@ -259,9 +264,11 @@ make lint          # Lint code
 Proxies the request to the target URL with CORS headers.
 
 **Query Parameters:**
+
 - `url` (required): The target URL to proxy
 
 **Example:**
+
 ```bash
 curl "http://localhost:8080/?url=https://api.github.com/users/octocat"
 ```
@@ -271,8 +278,9 @@ curl "http://localhost:8080/?url=https://api.github.com/users/octocat"
 Health check endpoint for monitoring.
 
 **Response:**
+
 ```json
-{"status":"ok","timestamp":"2026-01-08T12:00:00Z"}
+{ "status": "ok", "timestamp": "2026-01-08T12:00:00Z" }
 ```
 
 ## 🛡️ Security Features
@@ -296,24 +304,49 @@ MIT License - feel free to use this in your projects!
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+We welcome contributions! This project is perfect for learning Go and building production-ready software.
+
+### Good First Issues
+
+Looking to contribute? Check out our [Good First Issues](https://github.com/melihbirim/cors-proxy/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) - production enhancements perfect for first-time contributors:
+
+**Priority 1 (Great for beginners):**
+
+- Add graceful shutdown handling
+- Implement request ID middleware
+- Add structured JSON logging
+- Add security headers (CSP, HSTS, etc)
+
+**Priority 2 (Intermediate):**
+
+- Add Prometheus metrics endpoint
+- Implement response caching
+- Add API key authentication
+- Add circuit breaker pattern
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
+### Quick Start for Contributors
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+3. Make your changes
+4. Run tests: `make test`
+5. Run linter: `make lint`
+6. Commit your changes (`git commit -m 'Add: amazing feature'`)
+7. Push to the branch (`git push origin feature/amazing-feature`)
+8. Open a Pull Request
 
 ## 📊 Comparison with Other Solutions
 
-| Feature | This Proxy | CORS Anywhere | cors-proxy-node |
-|---------|------------|---------------|-----------------|
-| Language | Go | Node.js | Node.js |
-| Docker Support | ✅ | ⚠️ | ✅ |
-| One-Click Deploy | ✅ | ❌ | ⚠️ |
-| Memory Usage | ~10MB | ~50MB | ~40MB |
-| Cold Start | <100ms | ~1s | ~800ms |
-| Dependencies | 0 | Many | Many |
+| Feature          | This Proxy | CORS Anywhere | cors-proxy-node |
+| ---------------- | ---------- | ------------- | --------------- |
+| Language         | Go         | Node.js       | Node.js         |
+| Docker Support   | ✅         | ⚠️            | ✅              |
+| One-Click Deploy | ✅         | ❌            | ⚠️              |
+| Memory Usage     | ~10MB      | ~50MB         | ~40MB           |
+| Cold Start       | <100ms     | ~1s           | ~800ms          |
+| Dependencies     | 0          | Many          | Many            |
 
 ## 💡 Use Cases
 
@@ -336,12 +369,14 @@ While this proxy is production-ready, consider:
 ## 🐛 Troubleshooting
 
 ### Port already in use
+
 ```bash
 # Change port via environment variable
 PORT=3000 go run main.go
 ```
 
 ### Docker build fails
+
 ```bash
 # Clean Docker cache
 docker builder prune
@@ -349,6 +384,7 @@ docker build --no-cache -t cors-proxy .
 ```
 
 ### Connection timeout
+
 The proxy has a 30-second timeout. For longer requests, modify the `client.Timeout` in `main.go`.
 
 ## 📞 Support

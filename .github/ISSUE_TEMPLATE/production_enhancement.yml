@@ -1,0 +1,78 @@
+name: Good First Issues - Production Enhancements
+description: Production-ready features perfect for first-time contributors
+labels: ["good first issue", "enhancement", "help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🎯 Good First Issues
+        
+        These issues will make the CORS proxy more production-ready!
+        Great for first-time contributors or learning Go.
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Enhancement Type
+      description: What type of production enhancement?
+      options:
+        - Priority 1 - Graceful Shutdown
+        - Priority 1 - Request ID Middleware
+        - Priority 1 - Structured JSON Logging
+        - Priority 1 - Security Headers
+        - Priority 2 - Prometheus Metrics
+        - Priority 2 - Response Caching
+        - Priority 2 - API Key Authentication
+        - Priority 2 - Circuit Breaker
+        - Priority 3 - Redis Rate Limiting
+        - Priority 3 - Distributed Tracing
+        - Priority 3 - Request/Response Logging
+        - Other Production Enhancement
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe what needs to be implemented
+      placeholder: Add graceful shutdown to handle SIGTERM signals properly...
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Notes
+      description: Technical details or approach suggestions
+      placeholder: |
+        - Use context.Context for shutdown signal
+        - Implement http.Server.Shutdown()
+        - Add timeout for graceful shutdown
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: requirements
+    attributes:
+      label: Requirements
+      description: What needs to be done?
+      options:
+        - label: Update main.go with new functionality
+        - label: Add tests to test.sh
+        - label: Update README.md documentation
+        - label: Add environment variables to .env.example
+        - label: Ensure make lint passes
+        - label: Ensure make test passes
+
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: Difficulty
+      description: Estimated difficulty level
+      options:
+        - Easy (< 1 hour)
+        - Moderate (1-2 hours)
+        - Intermediate (2-4 hours)
+    validations:
+      required: true
