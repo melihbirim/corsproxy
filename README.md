@@ -2,7 +2,7 @@
 
 A lightning-fast, simple CORS proxy server written in Go. Deploy anywhere with one click!
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/melihbirim/cors-proxy)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/melihbirim/corsproxy)
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
 
 ## 🌐 Live Demo
@@ -37,8 +37,8 @@ fetch('https://corsproxy-8uo5.onrender.com/?url=https://api.example.com/data')
 
 ```bash
 # Clone the repository
-git clone https://github.com/melihbirim/cors-proxy.git
-cd cors-proxy
+git clone https://github.com/melihbirim/corsproxy.git
+cd corsproxy
 
 # Run directly with Go
 go run main.go
@@ -48,7 +48,7 @@ make run
 
 # Or build and run
 make build
-./bin/cors-proxy
+./bin/corsproxy
 ```
 
 Server starts at `http://localhost:8080`
@@ -67,8 +67,8 @@ make test
 
 ```bash
 # Build and run with Docker
-docker build -t cors-proxy .
-docker run -p 8080:8080 cors-proxy
+docker build -t corsproxy .
+docker run -p 8080:8080 corsproxy
 
 # Or use Docker Compose
 docker-compose up
@@ -78,8 +78,8 @@ docker-compose up
 
 ```bash
 # Using the development Dockerfile
-docker build -f Dockerfile.dev -t cors-proxy-dev .
-docker run -p 8080:8080 -v $(pwd):/app cors-proxy-dev
+docker build -f Dockerfile.dev -t corsproxy-dev .
+docker run -p 8080:8080 -v $(pwd):/app corsproxy-dev
 ```
 
 ## 📖 Usage
@@ -164,8 +164,8 @@ curl -fsSL https://cli.koyeb.com/install.sh | sh
 koyeb login
 
 # Deploy
-koyeb app create cors-proxy \
-  --git github.com/melihbirim/cors-proxy \
+koyeb app create corsproxy \
+  --git github.com/melihbirim/corsproxy \
   --git-branch main \
   --ports 8080:http \
   --routes /:8080
@@ -243,7 +243,7 @@ REQUEST_TIMEOUT=15s
 ## 🏗️ Project Structure
 
 ```bash
-cors-proxy/
+corsproxy/
 ├── main.go              # Main application
 ├── go.mod              # Go module file
 ├── Makefile            # Build automation
@@ -324,7 +324,7 @@ We welcome contributions! This project is perfect for learning Go and building p
 
 ### Good First Issues
 
-Looking to contribute? Check out our [Good First Issues](https://github.com/melihbirim/cors-proxy/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) - production enhancements perfect for first-time contributors:
+Looking to contribute? Check out our [Good First Issues](https://github.com/melihbirim/corsproxy/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) - production enhancements perfect for first-time contributors:
 
 **Priority 1 (Great for beginners):**
 
@@ -355,7 +355,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## 📊 Comparison with Other Solutions
 
-| Feature          | This Proxy | CORS Anywhere | cors-proxy-node |
+| Feature          | This Proxy | CORS Anywhere | corsproxy-node |
 | ---------------- | ---------- | ------------- | --------------- |
 | Language         | Go         | Node.js       | Node.js         |
 | Docker Support   | ✅         | ⚠️            | ✅              |
@@ -396,7 +396,7 @@ PORT=3000 go run main.go
 ```bash
 # Clean Docker cache
 docker builder prune
-docker build --no-cache -t cors-proxy .
+docker build --no-cache -t corsproxy .
 ```
 
 ### Connection timeout
