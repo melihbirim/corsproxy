@@ -1,9 +1,9 @@
 name: Release
 
-# On a `vX.Y.Z` tag: run tests, cross-compile binaries, attach them (plus
-# checksums) to the GitHub Release for that tag. Create the release itself
-# by hand first (`gh release create vX.Y.Z --notes-file ...`) so it gets a
-# real changelog — this workflow only adds the binaries to it.
+# On a `vX.Y.Z` tag: run tests, cross-compile binaries, create (or update)
+# the GitHub Release for that tag with auto-generated notes (commits/PRs
+# since the previous tag) and attach the binaries + checksums. Fully
+# automatic — no manual release step needed.
 
 on:
   push:
@@ -72,5 +72,5 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          # Never overwrite hand-written release notes; only attach assets.
+          generate_release_notes: true
           fail_on_unmatched_files: true
