@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-09-27
+
+### Security
+
+- Block requests to private, loopback, link-local (including cloud metadata at 169.254.169.254), CGNAT, and private IPv6 addresses by default. The check runs on the resolved IP of every connection, so it also covers redirects and DNS rebinding. Opt out with `ALLOW_PRIVATE_NETWORKS=true`.
+- `ALLOWED_HOSTS` / `BLOCKED_HOSTS` now match the exact host or its subdomains, parsed with `net/url` (previously substring matching, which `user@host` URLs and look-alike domains could bypass).
+- Redirect targets are re-checked against the host rules.
+- Upstream `Set-Cookie` headers are dropped, and proxied responses are sent with `Content-Security-Policy: sandbox` and `X-Content-Type-Options: nosniff`.
+- Request bodies are capped at `MAX_REQUEST_SIZE`; oversized upstream responses return 502 instead of being truncated.
+- The rate limiter uses the rightmost `X-Forwarded-For` entry (set by the platform proxy) instead of the client-controlled leftmost one, and expired entries are pruned.
+
 ## [1.0.0] - 2026-01-08
 
 ### Added

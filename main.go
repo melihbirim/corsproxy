@@ -1,14 +1,19 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -23,6 +28,10 @@ type Config struct {
 	AllowedHosts       []string
 	EnableVerboseLog   bool
 	RateLimitPerMinute int
+	// AllowPrivateNetworks lets the proxy reach loopback/private/link-local
+	// addresses. Off by default: an open proxy that can reach them is an
+	// SSRF hole (cloud metadata, internal admin panels).
+	AllowPrivateNetworks bool
 }
 
 var (
@@ -68,15 +77,16 @@ func main() {
 
 func loadConfig() {
 	config = Config{
-		Port:               getEnv("PORT", "8080"),
-		MaxRequestSize:     getEnvInt64("MAX_REQUEST_SIZE", 10*1024*1024), // 10MB default
-		RequestTimeout:     getEnvDuration("REQUEST_TIMEOUT", 30*time.Second),
-		MaxRedirects:       getEnvInt("MAX_REDIRECTS", 10),
-		AllowedOrigins:     getEnvList("ALLOWED_ORIGINS", "*"),
-		BlockedHosts:       getEnvList("BLOCKED_HOSTS", ""),
-		AllowedHosts:       getEnvList("ALLOWED_HOSTS", ""),
-		EnableVerboseLog:   getEnvBool("VERBOSE_LOGGING", false),
-		RateLimitPerMinute: getEnvInt("RATE_LIMIT_PER_MINUTE", 0), // 0 = disabled
+		Port:                 getEnv("PORT", "8080"),
+		MaxRequestSize:       getEnvInt64("MAX_REQUEST_SIZE", 10*1024*1024), // 10MB default
+		RequestTimeout:       getEnvDuration("REQUEST_TIMEOUT", 30*time.Second),
+		MaxRedirects:         getEnvInt("MAX_REDIRECTS", 10),
+		AllowedOrigins:       getEnvList("ALLOWED_ORIGINS", "*"),
+		BlockedHosts:         getEnvList("BLOCKED_HOSTS", ""),
+		AllowedHosts:         getEnvList("ALLOWED_HOSTS", ""),
+		EnableVerboseLog:     getEnvBool("VERBOSE_LOGGING", false),
+		AllowPrivateNetworks: getEnvBool("ALLOW_PRIVATE_NETWORKS", false),
+		RateLimitPerMinute:   getEnvInt("RATE_LIMIT_PER_MINUTE", 0), // 0 = disabled
 	}
 }
 
@@ -196,8 +206,11 @@ func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cap the request body like the response.
+	r.Body = http.MaxBytesReader(w, r.Body, config.MaxRequestSize)
+
 	// Create new request
-	proxyReq, err := http.NewRequest(r.Method, targetURL, r.Body)
+	proxyReq, err := http.NewRequestWithContext(context.Background(), r.Method, targetURL, r.Body)
 	if err != nil {
 		log.Printf("Error creating request: %v", err)
 		http.Error(w, fmt.Sprintf(`{"error":"Invalid URL: %s"}`, err.Error()), http.StatusBadRequest)
@@ -216,9 +229,18 @@ func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Make the request
 	client := &http.Client{
 		Timeout: config.RequestTimeout,
+		Transport: &http.Transport{
+			Proxy:                 nil,
+			DialContext:           safeDialer().DialContext,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: config.RequestTimeout,
+		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= config.MaxRedirects {
 				return fmt.Errorf("too many redirects")
+			}
+			if !isHostAllowed(req.URL.String()) {
+				return fmt.Errorf("redirect to a host that is not allowed")
 			}
 			return nil
 		},
@@ -229,6 +251,10 @@ func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 		if config.EnableVerboseLog {
 			log.Printf("Error fetching URL %s: %v", targetURL, err)
 		}
+		if errors.Is(err, errPrivateAddress) {
+			http.Error(w, `{"error":"This host is not allowed"}`, http.StatusForbidden)
+			return
+		}
 		http.Error(w, fmt.Sprintf(`{"error":"Failed to fetch URL: %s"}`, err.Error()), http.StatusBadGateway)
 		return
 	}
@@ -238,12 +264,26 @@ func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Copy response headers
+	// Refuse oversized responses up front instead of truncating them silently.
+	if resp.ContentLength > config.MaxRequestSize {
+		http.Error(w, `{"error":"Upstream response is too large"}`, http.StatusBadGateway)
+		return
+	}
+
+	// Copy response headers, except cookies: with credentials allowed, an
+	// upstream could otherwise set cookies on the proxy's own domain.
 	for key, values := range resp.Header {
+		if strings.EqualFold(key, "Set-Cookie") {
+			continue
+		}
 		for _, value := range values {
 			w.Header().Add(key, value)
 		}
 	}
+	// Proxied content must never run as a page on the proxy's origin
+	// (phishing/XSS). fetch()/XHR callers are unaffected.
+	w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 
 	// Override CORS headers
 	w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
@@ -268,14 +308,12 @@ func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header first (for proxies/load balancers)
+	// Behind a platform proxy (Railway, Render, Fly), the rightmost
+	// X-Forwarded-For entry is the one the platform appended; entries to its
+	// left come from the client and can be forged to dodge rate limits.
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		ips := strings.Split(xff, ",")
-		return strings.TrimSpace(ips[0])
-	}
-	// Check X-Real-IP header
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
+		return strings.TrimSpace(ips[len(ips)-1])
 	}
 	// Fall back to RemoteAddr
 	ip := r.RemoteAddr
@@ -290,6 +328,15 @@ func checkRateLimit(clientIP string) bool {
 	defer rateMutex.Unlock()
 
 	now := time.Now()
+	// Drop expired windows once the map grows, so spoofed or rotating IPs
+	// can't grow it without bound.
+	if len(rateLimiter) > 10000 {
+		for ip, entry := range rateLimiter {
+			if now.After(entry.resetTime) {
+				delete(rateLimiter, ip)
+			}
+		}
+	}
 	rl, exists := rateLimiter[clientIP]
 
 	if !exists || now.After(rl.resetTime) {
@@ -309,39 +356,71 @@ func checkRateLimit(clientIP string) bool {
 	return true
 }
 
-func isHostAllowed(targetURL string) bool {
-	// Extract host from URL
-	host := targetURL
-	if idx := strings.Index(targetURL, "://"); idx != -1 {
-		host = targetURL[idx+3:]
-	}
-	if idx := strings.Index(host, "/"); idx != -1 {
-		host = host[:idx]
-	}
-	if idx := strings.Index(host, ":"); idx != -1 {
-		host = host[:idx]
-	}
+// hostMatches reports whether host is rule or a subdomain of it
+// ("example.com" matches "api.example.com", not "example.com.evil.net").
+func hostMatches(host, rule string) bool {
+	rule = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(rule), "."))
+	return rule != "" && (host == rule || strings.HasSuffix(host, "."+rule))
+}
 
-	// Check blocked hosts first
+func isHostAllowed(targetURL string) bool {
+	u, err := url.Parse(targetURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname()) // strips userinfo, port, IPv6 brackets
+
 	for _, blocked := range config.BlockedHosts {
-		if strings.Contains(host, blocked) {
+		if hostMatches(host, blocked) {
 			return false
 		}
 	}
-
-	// If allowed hosts is empty, allow all (except blocked)
 	if len(config.AllowedHosts) == 0 {
 		return true
 	}
-
-	// Check if host is in allowed list
 	for _, allowed := range config.AllowedHosts {
-		if strings.Contains(host, allowed) {
+		if hostMatches(host, allowed) {
 			return true
 		}
 	}
-
 	return false
+}
+
+// isPrivateIP covers loopback, RFC 1918, link-local (incl. cloud metadata
+// 169.254.169.254), CGNAT, unspecified, multicast, and IPv6 ULA/link-local.
+// IPv4-mapped IPv6 is unwrapped first.
+func isPrivateIP(ip net.IP) bool {
+	if v4 := ip.To4(); v4 != nil {
+		ip = v4
+		if v4[0] == 0 || (v4[0] == 100 && v4[1]&0xc0 == 64) { // 0.0.0.0/8, 100.64.0.0/10
+			return true
+		}
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() || ip.IsMulticast() || ip.IsInterfaceLocalMulticast()
+}
+
+var errPrivateAddress = errors.New("destination is a private or internal address")
+
+// safeDialer checks the address actually being connected to, after DNS
+// resolution, on every connection (including after redirects). That also
+// defeats DNS rebinding, which a pre-request hostname check can't.
+func safeDialer() *net.Dialer {
+	d := &net.Dialer{Timeout: 10 * time.Second}
+	if config.AllowPrivateNetworks {
+		return d
+	}
+	d.Control = func(network, address string, _ syscall.RawConn) error {
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return err
+		}
+		if ip := net.ParseIP(host); ip == nil || isPrivateIP(ip) {
+			return errPrivateAddress
+		}
+		return nil
+	}
+	return d
 }
 
 func getAllowedOrigin(r *http.Request) string {

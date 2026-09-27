@@ -184,6 +184,7 @@ koyeb app create corsproxy \
 | `ALLOWED_ORIGINS`       | `*`        | CORS allowed origins (\* for all, or comma-separated list) |
 | `ALLOWED_HOSTS`         | ``         | Comma-separated list of allowed hosts (empty = all)        |
 | `BLOCKED_HOSTS`         | ``         | Comma-separated list of blocked hosts                      |
+| `ALLOW_PRIVATE_NETWORKS` | `false`   | Allow proxying to loopback/private/link-local addresses (only for trusted internal deployments) |
 | `RATE_LIMIT_PER_MINUTE` | `0`        | Rate limit per IP (0 = disabled)                           |
 | `VERBOSE_LOGGING`       | `false`    | Enable detailed request logging                            |
 
@@ -197,7 +198,7 @@ REQUEST_TIMEOUT=15s
 RATE_LIMIT_PER_MINUTE=100            # 100 requests per minute per IP
 ALLOWED_ORIGINS=https://example.com,https://app.example.com,https://admin.example.com
 ALLOWED_HOSTS=api.github.com,api.stripe.com,httpbin.org
-BLOCKED_HOSTS=localhost,127.0.0.1,192.168.0.0
+BLOCKED_HOSTS=internal.example.com
 VERBOSE_LOGGING=true
 ```
 
@@ -219,8 +220,13 @@ ALLOWED_ORIGINS=https://example.com,https://app.example.com
 # Only allow specific APIs
 ALLOWED_HOSTS=api.github.com,api.stripe.com
 
-# Block internal networks
-BLOCKED_HOSTS=localhost,127.0.0.1,192.168.0.0,10.0.0.0
+# Block specific hosts (matches the host and its subdomains)
+BLOCKED_HOSTS=internal.example.com
+
+# Private, loopback, link-local (incl. cloud metadata 169.254.169.254) and
+# CGNAT addresses are always blocked, checked on the resolved IP of every
+# connection, including redirects. Set ALLOW_PRIVATE_NETWORKS=true only if
+# the proxy must reach internal services.
 ```
 
 **Rate Limiting:**
