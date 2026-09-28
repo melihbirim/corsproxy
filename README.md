@@ -2,6 +2,9 @@
 
 A lightning-fast, simple CORS proxy server written in Go. Deploy anywhere with one click!
 
+[![CI](https://github.com/melihbirim/corsproxy/actions/workflows/ci.yml/badge.svg)](https://github.com/melihbirim/corsproxy/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/melihbirim/corsproxy/graph/badge.svg)](https://codecov.io/gh/melihbirim/corsproxy)
+
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/melihbirim/corsproxy)
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
 
