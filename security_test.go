@@ -91,10 +91,22 @@ func TestProxyRefusesLoopbackByDefault(t *testing.T) {
 }
 
 func TestClientIPUsesRightmostForwardedFor(t *testing.T) {
+	testConfig()
+	config.TrustProxyHeaders = true
 	r := httptest.NewRequest("GET", "/", nil)
 	r.Header.Set("X-Forwarded-For", "6.6.6.6, 203.0.113.9")
 	if got := getClientIP(r); got != "203.0.113.9" {
 		t.Errorf("getClientIP = %q, want the platform-appended 203.0.113.9", got)
+	}
+}
+
+func TestClientIPIgnoresForwardedForByDefault(t *testing.T) {
+	testConfig() // TrustProxyHeaders defaults to false
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("X-Forwarded-For", "6.6.6.6, 203.0.113.9")
+	r.RemoteAddr = "198.51.100.1:1234"
+	if got := getClientIP(r); got != "198.51.100.1" {
+		t.Errorf("getClientIP = %q, want RemoteAddr 198.51.100.1 — an untrusted X-Forwarded-For must not be used", got)
 	}
 }
 

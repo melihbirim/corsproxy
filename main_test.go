@@ -323,6 +323,57 @@ func TestProxyHandlerDailyLimitReached(t *testing.T) {
 	config.DailyRequestLimit = 0
 }
 
+func TestProxyHandlerAPIKeyCheckedBeforeDailyLimit(t *testing.T) {
+	testConfig()
+	config.RequireAPIKey = true
+	config.APIKeys = []string{"good-key"}
+	config.DailyRequestLimit = 1
+	dailyCount = 0
+	dailyResetTime = time.Time{}
+	defer func() {
+		config.RequireAPIKey = false
+		config.DailyRequestLimit = 0
+	}()
+
+	// No API key: must be rejected with 401 and must NOT consume the shared
+	// daily budget, otherwise an unauthenticated caller can exhaust it for
+	// everyone else.
+	rec := httptest.NewRecorder()
+	corsProxyHandler(rec, httptest.NewRequest("GET", "/?url="+url.QueryEscape("https://example.com/"), nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("missing key: got %d, want 401", rec.Code)
+	}
+	if dailyCount != 0 {
+		t.Fatalf("dailyCount = %d after an unauthenticated request, want 0 (it must not consume the daily budget)", dailyCount)
+	}
+}
+
+func TestProxyHandlerRejectsOversizedChunkedResponse(t *testing.T) {
+	testConfig()
+	config.AllowPrivateNetworks = true
+	config.MaxRequestSize = 5 // bytes
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("test server ResponseWriter doesn't support flushing")
+		}
+		// Two flushed writes with no Content-Length forces chunked transfer
+		// encoding, so the client sees resp.ContentLength == -1.
+		_, _ = w.Write([]byte("more "))
+		flusher.Flush()
+		_, _ = w.Write([]byte("than five bytes"))
+		flusher.Flush()
+	}))
+	defer upstream.Close()
+
+	rec := httptest.NewRecorder()
+	corsProxyHandler(rec, httptest.NewRequest("GET", "/?url="+url.QueryEscape(upstream.URL), nil))
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("oversized chunked response: got %d %q, want 502 (must not silently truncate with a 200)", rec.Code, rec.Body.String())
+	}
+}
+
 func TestProxyHandlerSetsCredentialsHeaderForSpecificOrigin(t *testing.T) {
 	testConfig()
 	config.AllowedOrigins = []string{"https://app.example.com"}

@@ -40,6 +40,11 @@ type Config struct {
 	// DailyRequestLimit is a global (not per-IP) kill switch on total
 	// proxied requests per rolling 24h window. 0 disables it.
 	DailyRequestLimit int
+	// TrustProxyHeaders makes getClientIP trust X-Forwarded-For. Off by
+	// default: a client with no reverse proxy in front trivially spoofs it
+	// to bypass RATE_LIMIT_PER_MINUTE. Only enable this behind a reverse
+	// proxy/platform that actually sets or overwrites the header itself.
+	TrustProxyHeaders bool
 }
 
 var (
@@ -87,6 +92,13 @@ func main() {
 	if config.DailyRequestLimit > 0 {
 		log.Printf("🛑 Daily request limit: %d", config.DailyRequestLimit)
 	}
+	if config.RateLimitPerMinute > 0 {
+		if config.TrustProxyHeaders {
+			log.Printf("🔗 Trusting X-Forwarded-For for rate limiting (make sure a reverse proxy actually sets it)")
+		} else {
+			log.Printf("🔗 Rate limiting by direct connection IP (set TRUST_PROXY_HEADERS=true if behind a reverse proxy)")
+		}
+	}
 	warnOnOpenDefaults()
 
 	if err := http.ListenAndServe(":"+config.Port, nil); err != nil {
@@ -109,6 +121,7 @@ func loadConfig() {
 		RequireAPIKey:        getEnvBool("REQUIRE_API_KEY", false),
 		APIKeys:              getEnvList("API_KEYS", ""),
 		DailyRequestLimit:    getEnvInt("DAILY_REQUEST_LIMIT", 0), // 0 = disabled
+		TrustProxyHeaders:    getEnvBool("TRUST_PROXY_HEADERS", false),
 	}
 }
 
@@ -261,16 +274,17 @@ func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Global daily request ceiling (kill switch), checked before anything
-	// else costs work.
-	if !checkDailyLimit() {
-		http.Error(w, `{"error":"Daily request limit reached. Try again tomorrow."}`, http.StatusServiceUnavailable)
+	// Optional API key authentication. Checked before the daily limit so an
+	// unauthenticated caller can't burn the shared global budget with
+	// requests that were never going to be authorized anyway.
+	if !isValidAPIKey(r) {
+		http.Error(w, `{"error":"Missing or invalid API key"}`, http.StatusUnauthorized)
 		return
 	}
 
-	// Optional API key authentication
-	if !isValidAPIKey(r) {
-		http.Error(w, `{"error":"Missing or invalid API key"}`, http.StatusUnauthorized)
+	// Global daily request ceiling (kill switch).
+	if !checkDailyLimit() {
+		http.Error(w, `{"error":"Daily request limit reached. Try again tomorrow."}`, http.StatusServiceUnavailable)
 		return
 	}
 
@@ -363,8 +377,24 @@ func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Refuse oversized responses up front instead of truncating them silently.
+	// Refuse oversized responses instead of truncating them silently. The
+	// Content-Length check is a fast path for responses that declare their
+	// size; chunked/unknown-length responses (ContentLength == -1) have no
+	// size to check up front, so read up to the cap (+1, to detect going
+	// over it) before writing any status code or bytes to the client. That
+	// way an oversized chunked response gets a clean 502 instead of a 200
+	// that gets silently cut off mid-body.
 	if resp.ContentLength > config.MaxRequestSize {
+		http.Error(w, `{"error":"Upstream response is too large"}`, http.StatusBadGateway)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, config.MaxRequestSize+1))
+	if err != nil {
+		log.Printf("Error reading upstream response: %v", err)
+		http.Error(w, `{"error":"Failed to read upstream response"}`, http.StatusBadGateway)
+		return
+	}
+	if int64(len(body)) > config.MaxRequestSize {
 		http.Error(w, `{"error":"Upstream response is too large"}`, http.StatusBadGateway)
 		return
 	}
@@ -393,11 +423,9 @@ func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Copy status code
 	w.WriteHeader(resp.StatusCode)
 
-	// Copy response body with size limit
-	limitedReader := io.LimitReader(resp.Body, config.MaxRequestSize)
-	written, err := io.Copy(w, limitedReader)
+	written, err := w.Write(body)
 	if err != nil {
-		log.Printf("Error copying response body: %v", err)
+		log.Printf("Error writing response body: %v", err)
 		return
 	}
 
@@ -407,12 +435,18 @@ func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getClientIP(r *http.Request) string {
-	// Behind a platform proxy (Railway, Render, Fly), the rightmost
-	// X-Forwarded-For entry is the one the platform appended; entries to its
-	// left come from the client and can be forged to dodge rate limits.
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		ips := strings.Split(xff, ",")
-		return strings.TrimSpace(ips[len(ips)-1])
+	// Only trust X-Forwarded-For when explicitly told to (TRUST_PROXY_HEADERS).
+	// Behind a platform proxy (Railway, Render, Fly) the rightmost entry is
+	// the one the platform appended; entries to its left come from the
+	// client. Without a trusted proxy actually setting/overwriting it, the
+	// header is just client-supplied text — trusting it unconditionally lets
+	// any caller spoof a new IP per request and bypass rate limiting
+	// entirely.
+	if config.TrustProxyHeaders {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			ips := strings.Split(xff, ",")
+			return strings.TrimSpace(ips[len(ips)-1])
+		}
 	}
 	// Fall back to RemoteAddr
 	ip := r.RemoteAddr

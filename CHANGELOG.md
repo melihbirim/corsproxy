@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-09-28
+
+### Fixed
+
+- `DAILY_REQUEST_LIMIT` was consumed before API-key auth ran, so an unauthenticated caller sending garbage requests (no `url` param, disallowed host, wrong/missing key) could exhaust the shared global budget and 503 every legitimate caller. API-key auth now runs first.
+- Per-IP rate limiting trusted `X-Forwarded-For` unconditionally, so any deployment without a reverse proxy actually setting it (or fronted by one that passes the client's own value through unmodified) had a rate limiter any caller could bypass by spoofing a new IP per request. Added `TRUST_PROXY_HEADERS` (default `false`) — the header is now ignored unless explicitly enabled. Railway and Render's included configs set it to `true` since both platforms genuinely sit in front of the app.
+- Chunked (no `Content-Length`) upstream responses over `MAX_REQUEST_SIZE` bypassed the oversized-response check and got silently truncated mid-body, served with the upstream's original `200` status. Now read (bounded) before any status is written, so an oversized chunked response gets a clean `502` like a `Content-Length`-declared one always did.
+
+### Added
+
+- `.env.example` and `make config` now list every environment variable, including the ones added in 1.2.0/1.2.1 that were missing from both.
+
 ## [1.2.3] - 2026-09-28
 
 ### Added

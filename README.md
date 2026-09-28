@@ -189,6 +189,7 @@ koyeb app create corsproxy \
 | `BLOCKED_HOSTS`         | ``         | Comma-separated list of blocked hosts                      |
 | `ALLOW_PRIVATE_NETWORKS` | `false`   | Allow proxying to loopback/private/link-local addresses (only for trusted internal deployments) |
 | `RATE_LIMIT_PER_MINUTE` | `0`        | Rate limit per IP (0 = disabled)                           |
+| `TRUST_PROXY_HEADERS`   | `false`    | Trust `X-Forwarded-For` for rate limiting (only enable behind a reverse proxy that actually sets it — see below) |
 | `REQUIRE_API_KEY`       | `false`    | Require a valid key from `API_KEYS` on every proxied request |
 | `API_KEYS`              | ``         | Comma-separated list of accepted API keys (see below)      |
 | `DAILY_REQUEST_LIMIT`   | `0`        | Global request ceiling per rolling 24h, across all clients (0 = disabled) |
@@ -241,6 +242,15 @@ BLOCKED_HOSTS=internal.example.com
 ```bash
 # Limit to 100 requests per minute per IP address
 RATE_LIMIT_PER_MINUTE=100
+
+# Only set this if you're behind a reverse proxy/platform (Railway, Render,
+# Fly, nginx, a CDN) that actually sets or overwrites X-Forwarded-For itself.
+# Off by default: without a trusted proxy in front, a client can send any
+# X-Forwarded-For value it wants and get a fresh rate-limit window on every
+# request, making RATE_LIMIT_PER_MINUTE do nothing. Railway and Render's
+# included configs (railway.json, render.yaml) already set this to true,
+# since both platforms sit in front of the app.
+TRUST_PROXY_HEADERS=true
 ```
 
 **Request Limits:**
@@ -284,7 +294,7 @@ The zero-config defaults are wide open, by design, so `go run .` and try-it-now 
 
 - [ ] **Set `ALLOWED_ORIGINS`** to your actual site(s). The default `*` lets any website's JavaScript call your proxy.
 - [ ] **Set `ALLOWED_HOSTS`** to the specific upstream APIs you intend to proxy to. An empty list lets your proxy reach *any* public host, which makes it attractive as a free open relay for other people's traffic.
-- [ ] **Set `RATE_LIMIT_PER_MINUTE`** to bound per-IP abuse.
+- [ ] **Set `RATE_LIMIT_PER_MINUTE`** to bound per-IP abuse, and set **`TRUST_PROXY_HEADERS=true`** alongside it if (and only if) you're deployed behind a reverse proxy/platform that actually sets `X-Forwarded-For` — otherwise the rate limit is trivially bypassed by spoofing the header.
 - [ ] **Set `DAILY_REQUEST_LIMIT`** as a cost backstop if you're paying for egress/compute.
 - [ ] **Consider `REQUIRE_API_KEY`** if the proxy is meant for your own apps/services rather than the general public — it turns an open relay into an authenticated one.
 - [ ] Leave `ALLOW_PRIVATE_NETWORKS` off unless you specifically need the proxy to reach internal/loopback addresses; it's an SSRF hole otherwise.
