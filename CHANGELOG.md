@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Optional API key authentication (`REQUIRE_API_KEY`, `API_KEYS`), checked with a constant-time comparison. Off by default so the zero-config quick start keeps working.
+- Global daily request ceiling / kill switch (`DAILY_REQUEST_LIMIT`), independent of the per-IP rate limiter.
+- Startup warning when `RATE_LIMIT_PER_MINUTE`, `ALLOWED_HOSTS`, `ALLOWED_ORIGINS`, and `REQUIRE_API_KEY` are all left at their wide-open defaults.
+- README "Production Checklist" section.
+
 ## [1.1.0] - 2026-09-27
 
 ### Security

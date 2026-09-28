@@ -186,6 +186,9 @@ koyeb app create corsproxy \
 | `BLOCKED_HOSTS`         | ``         | Comma-separated list of blocked hosts                      |
 | `ALLOW_PRIVATE_NETWORKS` | `false`   | Allow proxying to loopback/private/link-local addresses (only for trusted internal deployments) |
 | `RATE_LIMIT_PER_MINUTE` | `0`        | Rate limit per IP (0 = disabled)                           |
+| `REQUIRE_API_KEY`       | `false`    | Require a valid key from `API_KEYS` on every proxied request |
+| `API_KEYS`              | ``         | Comma-separated list of accepted API keys (see below)      |
+| `DAILY_REQUEST_LIMIT`   | `0`        | Global request ceiling per rolling 24h, across all clients (0 = disabled) |
 | `VERBOSE_LOGGING`       | `false`    | Enable detailed request logging                            |
 
 ### Production Configuration Example
@@ -199,6 +202,7 @@ RATE_LIMIT_PER_MINUTE=100            # 100 requests per minute per IP
 ALLOWED_ORIGINS=https://example.com,https://app.example.com,https://admin.example.com
 ALLOWED_HOSTS=api.github.com,api.stripe.com,httpbin.org
 BLOCKED_HOSTS=internal.example.com
+DAILY_REQUEST_LIMIT=100000
 VERBOSE_LOGGING=true
 ```
 
@@ -245,6 +249,44 @@ MAX_REQUEST_SIZE=5242880  # 5MB
 # Faster timeout for better resource usage
 REQUEST_TIMEOUT=15s
 ```
+
+**API Key Authentication (optional):**
+
+```bash
+# Require a key on every proxied request (health checks are unaffected)
+REQUIRE_API_KEY=true
+API_KEYS=key-for-team-a,key-for-team-b
+
+# Callers send it as a header or query param
+curl -H "X-API-Key: key-for-team-a" "https://your-proxy.com/?url=https://api.github.com"
+curl "https://your-proxy.com/?url=https://api.github.com&apikey=key-for-team-a"
+```
+
+Off by default so the zero-config quick start keeps working; turn it on once the proxy is reachable from outside your own machine.
+
+**Daily Request Ceiling (kill switch):**
+
+```bash
+# Hard stop at 100k proxied requests per rolling 24h window, across every
+# client combined — a cost/abuse backstop independent of RATE_LIMIT_PER_MINUTE,
+# which only limits a single IP.
+DAILY_REQUEST_LIMIT=100000
+```
+
+This is process-local (an in-memory counter), so it resets on restart and doesn't coordinate across multiple replicas. Good enough as a single-instance cost cap; not a substitute for a shared rate limiter if you run more than one instance.
+
+## ✅ Production Checklist
+
+The zero-config defaults are wide open, by design, so `go run .` and try-it-now demos work with no setup. Before exposing this on the public internet, go through this list:
+
+- [ ] **Set `ALLOWED_ORIGINS`** to your actual site(s). The default `*` lets any website's JavaScript call your proxy.
+- [ ] **Set `ALLOWED_HOSTS`** to the specific upstream APIs you intend to proxy to. An empty list lets your proxy reach *any* public host, which makes it attractive as a free open relay for other people's traffic.
+- [ ] **Set `RATE_LIMIT_PER_MINUTE`** to bound per-IP abuse.
+- [ ] **Set `DAILY_REQUEST_LIMIT`** as a cost backstop if you're paying for egress/compute.
+- [ ] **Consider `REQUIRE_API_KEY`** if the proxy is meant for your own apps/services rather than the general public — it turns an open relay into an authenticated one.
+- [ ] Leave `ALLOW_PRIVATE_NETWORKS` off unless you specifically need the proxy to reach internal/loopback addresses; it's an SSRF hole otherwise.
+- [ ] Run behind HTTPS (a platform load balancer, or a reverse proxy like Caddy/nginx) — this server speaks plain HTTP.
+- [ ] Watch the startup logs: a `⚠️  Running with open defaults` line lists exactly which of the above are still off.
 
 ## 🏗️ Project Structure
 
