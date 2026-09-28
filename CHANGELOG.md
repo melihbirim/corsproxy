@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-09-28
+
+### Added
+
+- Test coverage raised from 43.7% to 84.0% (env-parsing helpers, config loading, rate limiting, redirect handling, and more of `corsProxyHandler`'s branches).
+- `.golangci.yml` (errcheck, govet, staticcheck, unused); `make lint` is now enforced against a real config instead of whatever defaults happen to be installed.
+
 ## [1.2.1] - 2026-09-28
 
 ### Fixed
