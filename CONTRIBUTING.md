@@ -5,7 +5,7 @@ Thank you for your interest in contributing! 🎉
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/cors-proxy.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/corsproxy.git`
 3. Create a branch: `git checkout -b feature/your-feature-name`
 4. Make your changes
 5. Run tests: `make test`
@@ -19,7 +19,7 @@ Thank you for your interest in contributing! 🎉
 ```bash
 # Install Go 1.21 or later
 # Clone the repository
-git clone https://github.com/melihbirim/cors-proxy.git
+git clone https://github.com/melihbirim/corsproxy.git
 cd cors-proxy
 
 # Install dependencies

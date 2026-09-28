@@ -1,3 +1,3 @@
-module github.com/melihbirim/cors-proxy
+module github.com/melihbirim/corsproxy
 
 go 1.21
