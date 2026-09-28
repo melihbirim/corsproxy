@@ -63,7 +63,7 @@ func TestProxyRefusesLoopbackByDefault(t *testing.T) {
 	testConfig()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "s", Value: "1"})
-		w.Write([]byte("internal secret"))
+		_, _ = w.Write([]byte("internal secret"))
 	}))
 	defer upstream.Close()
 
@@ -139,7 +139,7 @@ func TestProxyRejectsMissingOrWrongAPIKey(t *testing.T) {
 	defer func() { config.RequireAPIKey = false }()
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer upstream.Close()
 
@@ -165,7 +165,9 @@ func TestDailyRequestLimit(t *testing.T) {
 	dailyResetTime = time.Time{}
 	defer func() { config.DailyRequestLimit = 0 }()
 
-	if !checkDailyLimit() || !checkDailyLimit() {
+	firstOK := checkDailyLimit()
+	secondOK := checkDailyLimit()
+	if !firstOK || !secondOK {
 		t.Fatal("first two requests within the limit should pass")
 	}
 	if checkDailyLimit() {

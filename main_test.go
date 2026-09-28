@@ -165,7 +165,9 @@ func TestCheckRateLimit(t *testing.T) {
 	rateLimiter = make(map[string]*RateLimit)
 
 	ip := "203.0.113.5"
-	if !checkRateLimit(ip) || !checkRateLimit(ip) {
+	firstOK := checkRateLimit(ip)
+	secondOK := checkRateLimit(ip)
+	if !firstOK || !secondOK {
 		t.Fatal("first two requests within the limit should pass")
 	}
 	if checkRateLimit(ip) {
@@ -271,7 +273,7 @@ func TestProxyHandlerRateLimited(t *testing.T) {
 	rateLimiter = make(map[string]*RateLimit)
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer upstream.Close()
 
@@ -299,7 +301,7 @@ func TestProxyHandlerDailyLimitReached(t *testing.T) {
 	dailyResetTime = time.Time{}
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer upstream.Close()
 
@@ -327,7 +329,7 @@ func TestProxyHandlerSetsCredentialsHeaderForSpecificOrigin(t *testing.T) {
 	config.AllowPrivateNetworks = true
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer upstream.Close()
 
@@ -350,7 +352,7 @@ func TestProxyHandlerRejectsOversizedUpstreamResponse(t *testing.T) {
 	config.MaxRequestSize = 10 // bytes: small enough that any real response trips it
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("this response body is well over ten bytes long"))
+		_, _ = w.Write([]byte("this response body is well over ten bytes long"))
 	}))
 	defer upstream.Close()
 
@@ -416,7 +418,7 @@ func TestProxyHandlerVerboseLogging(t *testing.T) {
 	// Successful round trip with verbose logging on.
 	config.AllowedHosts = nil
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer upstream.Close()
 
