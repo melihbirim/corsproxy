@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-09-28
+
+### Added
+
+- CI workflow (build, vet, gofmt, lint, test+coverage) running on every push and PR — `release.yml` only ran on version tags, so this is the first gate before code lands on `main`.
+- Real Codecov coverage reporting and a live coverage badge in the README, alongside a CI status badge.
+
 ## [1.2.2] - 2026-09-28
 
 ### Added
