@@ -97,3 +97,78 @@ func TestClientIPUsesRightmostForwardedFor(t *testing.T) {
 		t.Errorf("getClientIP = %q, want the platform-appended 203.0.113.9", got)
 	}
 }
+
+func TestAPIKeyAuth(t *testing.T) {
+	testConfig()
+	config.RequireAPIKey = true
+	config.APIKeys = []string{"good-key"}
+
+	header := httptest.NewRequest("GET", "/", nil)
+	header.Header.Set("X-API-Key", "good-key")
+	if !isValidAPIKey(header) {
+		t.Error("valid key via header should be accepted")
+	}
+
+	query := httptest.NewRequest("GET", "/?apikey=good-key", nil)
+	if !isValidAPIKey(query) {
+		t.Error("valid key via query param should be accepted")
+	}
+
+	wrong := httptest.NewRequest("GET", "/", nil)
+	wrong.Header.Set("X-API-Key", "bad-key")
+	if isValidAPIKey(wrong) {
+		t.Error("wrong key should be rejected")
+	}
+
+	missing := httptest.NewRequest("GET", "/", nil)
+	if isValidAPIKey(missing) {
+		t.Error("missing key should be rejected when RequireAPIKey is on")
+	}
+
+	config.RequireAPIKey = false
+	if !isValidAPIKey(missing) {
+		t.Error("no key should be required when RequireAPIKey is off")
+	}
+}
+
+func TestProxyRejectsMissingOrWrongAPIKey(t *testing.T) {
+	testConfig()
+	config.RequireAPIKey = true
+	config.APIKeys = []string{"good-key"}
+	config.AllowPrivateNetworks = true // httptest servers are on loopback
+	defer func() { config.RequireAPIKey = false }()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("ok"))
+	}))
+	defer upstream.Close()
+
+	rec := httptest.NewRecorder()
+	corsProxyHandler(rec, httptest.NewRequest("GET", "/?url="+url.QueryEscape(upstream.URL), nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no key: got %d, want 401", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/?url="+url.QueryEscape(upstream.URL), nil)
+	req.Header.Set("X-API-Key", "good-key")
+	corsProxyHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("valid key: got %d, want 200", rec.Code)
+	}
+}
+
+func TestDailyRequestLimit(t *testing.T) {
+	testConfig()
+	config.DailyRequestLimit = 2
+	dailyCount = 0
+	dailyResetTime = time.Time{}
+	defer func() { config.DailyRequestLimit = 0 }()
+
+	if !checkDailyLimit() || !checkDailyLimit() {
+		t.Fatal("first two requests within the limit should pass")
+	}
+	if checkDailyLimit() {
+		t.Fatal("third request should be refused once the daily ceiling is hit")
+	}
+}

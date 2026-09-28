@@ -9,5 +9,7 @@
 /bin/
 /dist/
 /vendor/
+/cors-proxy
+/corsproxy
 .env
 .env.local

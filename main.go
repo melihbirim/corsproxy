@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
@@ -32,12 +33,23 @@ type Config struct {
 	// addresses. Off by default: an open proxy that can reach them is an
 	// SSRF hole (cloud metadata, internal admin panels).
 	AllowPrivateNetworks bool
+	// RequireAPIKey gates every proxied request behind one of APIKeys.
+	// Off by default so the zero-config quick start keeps working.
+	RequireAPIKey bool
+	APIKeys       []string
+	// DailyRequestLimit is a global (not per-IP) kill switch on total
+	// proxied requests per rolling 24h window. 0 disables it.
+	DailyRequestLimit int
 }
 
 var (
 	config      Config
 	rateLimiter = make(map[string]*RateLimit)
 	rateMutex   sync.RWMutex
+
+	dailyCount     int64
+	dailyResetTime time.Time
+	dailyMutex     sync.Mutex
 )
 
 type RateLimit struct {
@@ -69,6 +81,13 @@ func main() {
 	if len(config.BlockedHosts) > 0 {
 		log.Printf("🚫 Blocked hosts: %v", config.BlockedHosts)
 	}
+	if config.RequireAPIKey {
+		log.Printf("🔑 API key required (%d key(s) configured)", len(config.APIKeys))
+	}
+	if config.DailyRequestLimit > 0 {
+		log.Printf("🛑 Daily request limit: %d", config.DailyRequestLimit)
+	}
+	warnOnOpenDefaults()
 
 	if err := http.ListenAndServe(":"+config.Port, nil); err != nil {
 		log.Fatal("Server failed to start:", err)
@@ -87,7 +106,74 @@ func loadConfig() {
 		EnableVerboseLog:     getEnvBool("VERBOSE_LOGGING", false),
 		AllowPrivateNetworks: getEnvBool("ALLOW_PRIVATE_NETWORKS", false),
 		RateLimitPerMinute:   getEnvInt("RATE_LIMIT_PER_MINUTE", 0), // 0 = disabled
+		RequireAPIKey:        getEnvBool("REQUIRE_API_KEY", false),
+		APIKeys:              getEnvList("API_KEYS", ""),
+		DailyRequestLimit:    getEnvInt("DAILY_REQUEST_LIMIT", 0), // 0 = disabled
 	}
+}
+
+// warnOnOpenDefaults logs a single startup warning listing which safety
+// nets are off, so a wide-open deployment isn't silent about it.
+func warnOnOpenDefaults() {
+	var open []string
+	if config.RateLimitPerMinute == 0 {
+		open = append(open, "no per-IP rate limit (RATE_LIMIT_PER_MINUTE=0)")
+	}
+	if len(config.AllowedHosts) == 0 {
+		open = append(open, "no destination allowlist (ALLOWED_HOSTS empty, any public host can be proxied)")
+	}
+	if len(config.AllowedOrigins) == 1 && config.AllowedOrigins[0] == "*" {
+		open = append(open, "any origin can call it (ALLOWED_ORIGINS=*)")
+	}
+	if !config.RequireAPIKey {
+		open = append(open, "no API key required (REQUIRE_API_KEY=false)")
+	}
+	if len(open) == 0 {
+		return
+	}
+	log.Printf("⚠️  Running with open defaults: %s. Fine for local dev; see README's Production checklist before exposing this publicly.", strings.Join(open, "; "))
+}
+
+// isValidAPIKey reports whether the request is authorized. Always true
+// when RequireAPIKey is off (the zero-config default).
+func isValidAPIKey(r *http.Request) bool {
+	if !config.RequireAPIKey {
+		return true
+	}
+	provided := r.Header.Get("X-API-Key")
+	if provided == "" {
+		provided = r.URL.Query().Get("apikey")
+	}
+	if provided == "" {
+		return false
+	}
+	for _, key := range config.APIKeys {
+		if subtle.ConstantTimeCompare([]byte(provided), []byte(key)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// checkDailyLimit enforces a global (all clients combined) request ceiling
+// over a rolling 24h window, as a cost/abuse kill switch independent of the
+// per-IP rate limiter. Always true when DailyRequestLimit is 0.
+func checkDailyLimit() bool {
+	if config.DailyRequestLimit <= 0 {
+		return true
+	}
+	dailyMutex.Lock()
+	defer dailyMutex.Unlock()
+	now := time.Now()
+	if dailyResetTime.IsZero() || now.After(dailyResetTime) {
+		dailyCount = 0
+		dailyResetTime = now.Add(24 * time.Hour)
+	}
+	if dailyCount >= int64(config.DailyRequestLimit) {
+		return false
+	}
+	dailyCount++
+	return true
 }
 
 func getEnv(key, defaultVal string) string {
@@ -172,6 +258,19 @@ func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle preflight requests
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Global daily request ceiling (kill switch), checked before anything
+	// else costs work.
+	if !checkDailyLimit() {
+		http.Error(w, `{"error":"Daily request limit reached. Try again tomorrow."}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	// Optional API key authentication
+	if !isValidAPIKey(r) {
+		http.Error(w, `{"error":"Missing or invalid API key"}`, http.StatusUnauthorized)
 		return
 	}
 
