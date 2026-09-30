@@ -374,6 +374,48 @@ func TestProxyHandlerRejectsOversizedChunkedResponse(t *testing.T) {
 	}
 }
 
+func TestProxyHandlerDoesNotForwardCredentialHeaders(t *testing.T) {
+	testConfig()
+	config.AllowPrivateNetworks = true
+	config.RequireAPIKey = true
+	config.APIKeys = []string{"good-key"}
+	defer func() { config.RequireAPIKey = false }()
+
+	var gotAuth, gotCookie, gotAPIKey, gotCustom string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotCookie = r.Header.Get("Cookie")
+		gotAPIKey = r.Header.Get("X-API-Key")
+		gotCustom = r.Header.Get("X-Custom-Header")
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer upstream.Close()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/?url="+url.QueryEscape(upstream.URL), nil)
+	req.Header.Set("X-API-Key", "good-key") // authenticates to us, must not leak to the target
+	req.Header.Set("Authorization", "Bearer caller-secret")
+	req.Header.Set("Cookie", "session=caller-secret")
+	req.Header.Set("X-Custom-Header", "should-still-forward")
+	corsProxyHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if gotAuth != "" {
+		t.Errorf("Authorization leaked to target: %q", gotAuth)
+	}
+	if gotCookie != "" {
+		t.Errorf("Cookie leaked to target: %q", gotCookie)
+	}
+	if gotAPIKey != "" {
+		t.Errorf("X-API-Key leaked to target: %q", gotAPIKey)
+	}
+	if gotCustom != "should-still-forward" {
+		t.Errorf("unrelated header should still forward, got %q", gotCustom)
+	}
+}
+
 func TestProxyHandlerSetsCredentialsHeaderForSpecificOrigin(t *testing.T) {
 	testConfig()
 	config.AllowedOrigins = []string{"https://app.example.com"}

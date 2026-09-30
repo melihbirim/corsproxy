@@ -253,6 +253,16 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Headers never forwarded to the proxy target. Go canonicalizes header
+// names (textproto.CanonicalMIMEHeaderKey), so these must match that form
+// exactly, not the wire form (e.g. "X-Api-Key", not "X-API-Key").
+var nonForwardedHeaders = map[string]bool{
+	"Host":          true,
+	"Authorization": true,
+	"Cookie":        true,
+	"X-Api-Key":     true,
+}
+
 func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Determine which origin to allow based on request Origin header
 	allowedOrigin := getAllowedOrigin(r)
@@ -330,12 +340,18 @@ func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Copy headers from original request (except Host)
+	// Copy headers from the original request, except ones that shouldn't
+	// reach an arbitrary caller-chosen target: Host (net/http sets it from
+	// the target URL), Authorization/Cookie (credentials meant for us or
+	// for whatever the caller had them set for, not for a third party we
+	// didn't choose), and X-API-Key (if REQUIRE_API_KEY is on, this is the
+	// proxy's own configured key — forwarding it would leak it to the target).
 	for key, values := range r.Header {
-		if key != "Host" {
-			for _, value := range values {
-				proxyReq.Header.Add(key, value)
-			}
+		if nonForwardedHeaders[key] {
+			continue
+		}
+		for _, value := range values {
+			proxyReq.Header.Add(key, value)
 		}
 	}
 

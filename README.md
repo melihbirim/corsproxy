@@ -108,13 +108,15 @@ fetch("http://localhost:8080/?url=https://api.example.com/data", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    Authorization: "Bearer token123",
+    "X-Request-Id": "abc123",
   },
   body: JSON.stringify({ key: "value" }),
 })
   .then((response) => response.json())
   .then((data) => console.log(data));
 ```
+
+**Not forwarded to the target, on purpose:** `Authorization`, `Cookie`, and (if `REQUIRE_API_KEY` is on) `X-API-Key`. These are credential-bearing headers — forwarding them unmodified would let anyone use your proxy to relay someone else's bearer token or session cookie to a third-party API, or leak your own configured `API_KEYS` value to the target. All other headers, including custom ones, pass through unchanged.
 
 ### Health Check
 

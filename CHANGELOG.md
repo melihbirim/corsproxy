@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.5] - 2026-09-30
+
+### Security
+
+- **Behavior change**: `Authorization`, `Cookie`, and (if `REQUIRE_API_KEY` is on) `X-API-Key` are no longer forwarded to the proxy target. Previously every incoming header except `Host` was relayed verbatim, which let anyone use the proxy to replay someone else's bearer token or session cookie against a third-party API, or leaked the proxy's own configured `API_KEYS` value to the target. All other headers, including custom ones, still forward unchanged. If you relied on `Authorization` reaching the target, that's the one case this now breaks — there's no override mechanism to re-add it, since the OSS proxy has no per-key managed-header feature.
+
 ## [1.2.4] - 2026-09-28
 
 ### Fixed
