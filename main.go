@@ -57,6 +57,10 @@ var (
 	dailyMutex     sync.Mutex
 )
 
+// Set at build time: go build -ldflags "-X main.version=v1.2.6". Docker and
+// release binaries carry the git tag; a plain `go run .` reports "dev".
+var version = "dev"
+
 type RateLimit struct {
 	count     int
 	resetTime time.Time
@@ -68,7 +72,7 @@ func main() {
 	http.HandleFunc("/", corsProxyHandler)
 	http.HandleFunc("/health", healthCheckHandler)
 
-	log.Printf("🚀 CORS Proxy server starting on port %s", config.Port)
+	log.Printf("🚀 CORS Proxy %s starting on port %s", version, config.Port)
 	log.Printf("📝 Usage: http://localhost:%s/?url=https://example.com", config.Port)
 	log.Printf("⚙️  Max request size: %d MB", config.MaxRequestSize/(1024*1024))
 	log.Printf("⏱️  Request timeout: %v", config.RequestTimeout)
@@ -248,7 +252,7 @@ func getEnvList(key, defaultVal string) []string {
 func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if _, err := fmt.Fprintf(w, `{"status":"ok","timestamp":"%s"}`, time.Now().Format(time.RFC3339)); err != nil {
+	if _, err := fmt.Fprintf(w, `{"status":"ok","version":"%s","timestamp":"%s"}`, version, time.Now().Format(time.RFC3339)); err != nil {
 		log.Printf("Error writing health check response: %v", err)
 	}
 }
@@ -357,13 +361,8 @@ func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Make the request
 	client := &http.Client{
-		Timeout: config.RequestTimeout,
-		Transport: &http.Transport{
-			Proxy:                 nil,
-			DialContext:           safeDialer().DialContext,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ResponseHeaderTimeout: config.RequestTimeout,
-		},
+		Timeout:   config.RequestTimeout,
+		Transport: transport(),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= config.MaxRedirects {
 				return fmt.Errorf("too many redirects")
@@ -554,12 +553,39 @@ var errPrivateAddress = errors.New("destination is a private or internal address
 // safeDialer checks the address actually being connected to, after DNS
 // resolution, on every connection (including after redirects). That also
 // defeats DNS rebinding, which a pre-request hostname check can't.
+// One shared transport for every proxied request. Building a new
+// http.Transport per request (as earlier versions did) meant zero connection
+// reuse and an idle-socket leak: at 200 concurrent clients the proxy held
+// ~28k sockets and ~1 GB of memory. Created lazily so tests that call the
+// handlers without main() still get it after loadConfig().
+var (
+	upstreamTransport     *http.Transport
+	upstreamTransportOnce sync.Once
+)
+
+func transport() *http.Transport {
+	upstreamTransportOnce.Do(func() {
+		upstreamTransport = &http.Transport{
+			Proxy:                 nil,
+			DialContext:           safeDialer().DialContext,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: config.RequestTimeout,
+			MaxIdleConns:          512,
+			MaxIdleConnsPerHost:   128,
+			IdleConnTimeout:       90 * time.Second,
+		}
+	})
+	return upstreamTransport
+}
+
 func safeDialer() *net.Dialer {
 	d := &net.Dialer{Timeout: 10 * time.Second}
-	if config.AllowPrivateNetworks {
-		return d
-	}
+	// Checked per dial, not at construction: the dialer lives inside the shared
+	// transport, so it must follow config changes (tests flip this at runtime).
 	d.Control = func(network, address string, _ syscall.RawConn) error {
+		if config.AllowPrivateNetworks {
+			return nil
+		}
 		host, _, err := net.SplitHostPort(address)
 		if err != nil {
 			return err

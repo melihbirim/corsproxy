@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.6] - 2026-10-20
+
+### Fixed
+
+- Every proxied request built its own `http.Transport`, so no upstream connection was ever reused and idle sockets leaked until garbage collection. Under load this collapsed: at 200 concurrent clients the proxy held ~28k sockets, ~1 GB of memory, and failed 80% of requests. One shared transport now (`MaxIdleConnsPerHost=128`, 90s idle timeout). Same benchmark after: 58k req/s, p99 13 ms, 21 MB, 0 failures. At 50 concurrent clients: 4.7k to 51k req/s.
+
+### Added
+
+- Multi-arch Docker image published on every release to `ghcr.io/melihbirim/corsproxy` (tags `1.2.6`, `1.2`, `1`, `latest`). The image runs as an unprivileged user (uid 10001) instead of root, and the binary is built static and stripped. ~14 MB.
+- `version` is stamped into release binaries and images at build time, printed at startup and returned by `/health`.
+- README: VPS install path (release binary + systemd unit with hardening flags + nginx TLS front).
+
+### Security
+
+- Builder image bumped from Go 1.21 to Go 1.27. Go 1.21 is end-of-life, and trivy reported 71 known standard-library CVEs (1 critical) in binaries built with it.
+
 ## [1.2.5] - 2026-09-30
 
 ### Security

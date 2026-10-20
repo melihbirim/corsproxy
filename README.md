@@ -27,7 +27,7 @@ fetch('https://corsproxy-8uo5.onrender.com/?url=https://api.example.com/data')
 ## ✨ Features
 
 - ⚡ **Fast**: Written in Go for maximum performance
-- 🐳 **Docker Ready**: Full Docker and Docker Compose support
+- 🐳 **Docker Ready**: `docker run ghcr.io/melihbirim/corsproxy` — multi-arch image published on every release
 - 🚀 **One-Click Deploy**: Deploy to Railway, Render, Fly.io, or Koyeb
 - 🔓 **Full CORS Support**: Handles all CORS headers automatically
 - 📦 **Zero Dependencies**: Uses only Go standard library
@@ -68,8 +68,29 @@ make test
 
 ### Using Docker
 
+Every release publishes a multi-arch image (linux/amd64, linux/arm64) to
+GitHub Container Registry. No build step needed:
+
 ```bash
-# Build and run with Docker
+# Latest release
+docker run -d --name corsproxy -p 8080:8080 \
+  -e ALLOWED_ORIGINS=https://app.example.com \
+  -e ALLOWED_HOSTS=api.example.com \
+  ghcr.io/melihbirim/corsproxy:latest
+
+# Pin a version (tags: 1.2.6, 1.2, 1, latest)
+docker run -d -p 8080:8080 ghcr.io/melihbirim/corsproxy:1.2.6
+
+# Check what you're running
+curl -s localhost:8080/health
+# {"status":"ok","version":"v1.2.6","timestamp":"..."}
+```
+
+The image runs as an unprivileged user (uid 10001), ships a static binary
+with no runtime dependencies, and is under 15 MB.
+
+```bash
+# Or build from source
 docker build -t corsproxy .
 docker run -p 8080:8080 corsproxy
 
@@ -175,6 +196,80 @@ koyeb app create corsproxy \
   --ports 8080:http \
   --routes /:8080
 ```
+
+### VPS (binary + systemd + nginx)
+
+Any Linux box works. Download the release binary, run it as a service bound
+to localhost, and put nginx in front for TLS.
+
+```bash
+# 1. Binary (pick linux-amd64 or linux-arm64)
+curl -fsSL -o /usr/local/bin/cors-proxy \
+  https://github.com/melihbirim/corsproxy/releases/latest/download/cors-proxy-linux-amd64
+chmod +x /usr/local/bin/cors-proxy
+useradd --system --no-create-home --shell /usr/sbin/nologin corsproxy
+
+# 2. Config
+cat > /etc/corsproxy.env <<'EOF'
+PORT=8080
+ALLOWED_ORIGINS=https://app.example.com
+ALLOWED_HOSTS=api.example.com
+RATE_LIMIT_PER_MINUTE=100
+TRUST_PROXY_HEADERS=true
+EOF
+chmod 600 /etc/corsproxy.env
+```
+
+```ini
+# 3. /etc/systemd/system/corsproxy.service
+[Unit]
+Description=CORS proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=corsproxy
+EnvironmentFile=/etc/corsproxy.env
+ExecStart=/usr/local/bin/cors-proxy
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl daemon-reload && systemctl enable --now corsproxy
+curl -s localhost:8080/health
+```
+
+```nginx
+# 4. /etc/nginx/sites-available/corsproxy  (TLS via certbot or your own certs)
+server {
+    listen 443 ssl http2;
+    server_name proxy.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/proxy.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/proxy.example.com/privkey.pem;
+
+    location / {
+        proxy_pass         http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 35s;   # a bit above REQUEST_TIMEOUT
+        client_max_body_size 10m; # match MAX_REQUEST_SIZE
+    }
+}
+```
+
+`TRUST_PROXY_HEADERS=true` is correct here because nginx overwrites
+`X-Forwarded-For`; leave it `false` if the binary is reachable directly.
 
 ## ⚙️ Configuration
 

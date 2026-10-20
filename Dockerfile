@@ -1,32 +1,22 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
+ARG VERSION=dev
 WORKDIR /app
-
-# Copy go mod files
 COPY go.mod ./
-
-# Download dependencies
 RUN go mod download
-
-# Copy source code
 COPY main.go ./
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+    -ldflags="-s -w -X main.version=${VERSION}" -o cors-proxy .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o cors-proxy .
+# Final stage: alpine for CA certs + wget (used by the compose healthcheck),
+# but the proxy itself runs as an unprivileged user, not root.
+FROM alpine:3.20
 
-# Final stage
-FROM alpine:latest
+RUN apk --no-cache add ca-certificates \
+    && adduser -D -H -u 10001 corsproxy
+COPY --from=builder /app/cors-proxy /usr/local/bin/cors-proxy
 
-RUN apk --no-cache add ca-certificates
-
-WORKDIR /root/
-
-# Copy the binary from builder
-COPY --from=builder /app/cors-proxy .
-
-# Expose port
+USER corsproxy
 EXPOSE 8080
-
-# Run the application
-CMD ["./cors-proxy"]
+CMD ["cors-proxy"]
