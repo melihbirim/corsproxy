@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -50,7 +51,7 @@ type Config struct {
 var (
 	config      Config
 	rateLimiter = make(map[string]*RateLimit)
-	rateMutex   sync.RWMutex
+	rateMutex   sync.Mutex
 
 	dailyCount     int64
 	dailyResetTime time.Time
@@ -69,62 +70,38 @@ type RateLimit struct {
 func main() {
 	loadConfig()
 
-	http.HandleFunc("/", corsProxyHandler)
-	http.HandleFunc("/health", healthCheckHandler)
-
-	log.Printf("🚀 CORS Proxy %s starting on port %s", version, config.Port)
-	log.Printf("📝 Usage: http://localhost:%s/?url=https://example.com", config.Port)
-	log.Printf("⚙️  Max request size: %d MB", config.MaxRequestSize/(1024*1024))
-	log.Printf("⏱️  Request timeout: %v", config.RequestTimeout)
-	if len(config.AllowedOrigins) == 1 && config.AllowedOrigins[0] == "*" {
-		log.Printf("🌐 CORS: All origins allowed (*)")
-	} else {
-		log.Printf("🌐 CORS: Specific origins allowed: %v", config.AllowedOrigins)
-	}
-	if config.RateLimitPerMinute > 0 {
-		log.Printf("🚦 Rate limit: %d requests/minute per IP", config.RateLimitPerMinute)
-	}
-	if len(config.AllowedHosts) > 0 {
-		log.Printf("✅ Allowed hosts: %v", config.AllowedHosts)
-	}
-	if len(config.BlockedHosts) > 0 {
-		log.Printf("🚫 Blocked hosts: %v", config.BlockedHosts)
-	}
-	if config.RequireAPIKey {
-		log.Printf("🔑 API key required (%d key(s) configured)", len(config.APIKeys))
-	}
-	if config.DailyRequestLimit > 0 {
-		log.Printf("🛑 Daily request limit: %d", config.DailyRequestLimit)
-	}
-	if config.RateLimitPerMinute > 0 {
-		if config.TrustProxyHeaders {
-			log.Printf("🔗 Trusting X-Forwarded-For for rate limiting (make sure a reverse proxy actually sets it)")
-		} else {
-			log.Printf("🔗 Rate limiting by direct connection IP (set TRUST_PROXY_HEADERS=true if behind a reverse proxy)")
-		}
-	}
+	log.Printf("CORS Proxy %s on :%s: max body %d MB, timeout %v, origins %v, allowed hosts %v, blocked hosts %v, rate limit %d/min (trust X-Forwarded-For: %v), daily limit %d, API key required: %v",
+		version, config.Port, config.MaxRequestSize/(1024*1024), config.RequestTimeout, config.AllowedOrigins, config.AllowedHosts, config.BlockedHosts,
+		config.RateLimitPerMinute, config.TrustProxyHeaders, config.DailyRequestLimit, config.RequireAPIKey)
 	warnOnOpenDefaults()
 
-	if err := http.ListenAndServe(":"+config.Port, nil); err != nil {
+	if err := http.ListenAndServe(":"+config.Port, newMux()); err != nil {
 		log.Fatal("Server failed to start:", err)
 	}
+}
+
+func newMux() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", corsProxyHandler)
+	mux.HandleFunc("/health", healthCheckHandler)
+	return mux
 }
 
 func loadConfig() {
 	config = Config{
 		Port:                 getEnv("PORT", "8080"),
-		MaxRequestSize:       getEnvInt64("MAX_REQUEST_SIZE", 10*1024*1024), // 10MB default
-		RequestTimeout:       getEnvDuration("REQUEST_TIMEOUT", 30*time.Second),
-		MaxRedirects:         getEnvInt("MAX_REDIRECTS", 10),
+		MaxRequestSize:       getEnvParsed("MAX_REQUEST_SIZE", 10*1024*1024, parseInt64), // 10MB default
+		RequestTimeout:       getEnvParsed("REQUEST_TIMEOUT", 30*time.Second, time.ParseDuration),
+		MaxRedirects:         getEnvParsed("MAX_REDIRECTS", 10, strconv.Atoi),
 		AllowedOrigins:       getEnvList("ALLOWED_ORIGINS", "*"),
 		BlockedHosts:         getEnvList("BLOCKED_HOSTS", ""),
 		AllowedHosts:         getEnvList("ALLOWED_HOSTS", ""),
 		EnableVerboseLog:     getEnvBool("VERBOSE_LOGGING", false),
 		AllowPrivateNetworks: getEnvBool("ALLOW_PRIVATE_NETWORKS", false),
-		RateLimitPerMinute:   getEnvInt("RATE_LIMIT_PER_MINUTE", 0), // 0 = disabled
+		RateLimitPerMinute:   getEnvParsed("RATE_LIMIT_PER_MINUTE", 0, strconv.Atoi), // 0 = disabled
 		RequireAPIKey:        getEnvBool("REQUIRE_API_KEY", false),
 		APIKeys:              getEnvList("API_KEYS", ""),
-		DailyRequestLimit:    getEnvInt("DAILY_REQUEST_LIMIT", 0), // 0 = disabled
+		DailyRequestLimit:    getEnvParsed("DAILY_REQUEST_LIMIT", 0, strconv.Atoi), // 0 = disabled
 		TrustProxyHeaders:    getEnvBool("TRUST_PROXY_HEADERS", false),
 	}
 }
@@ -200,32 +177,17 @@ func getEnv(key, defaultVal string) string {
 	return defaultVal
 }
 
-func getEnvInt(key string, defaultVal int) int {
+// getEnvParsed returns defaultVal when key is unset or fails to parse.
+func getEnvParsed[T any](key string, defaultVal T, parse func(string) (T, error)) T {
 	if val := os.Getenv(key); val != "" {
-		if i, err := strconv.Atoi(val); err == nil {
-			return i
+		if v, err := parse(val); err == nil {
+			return v
 		}
 	}
 	return defaultVal
 }
 
-func getEnvInt64(key string, defaultVal int64) int64 {
-	if val := os.Getenv(key); val != "" {
-		if i, err := strconv.ParseInt(val, 10, 64); err == nil {
-			return i
-		}
-	}
-	return defaultVal
-}
-
-func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
-	if val := os.Getenv(key); val != "" {
-		if d, err := time.ParseDuration(val); err == nil {
-			return d
-		}
-	}
-	return defaultVal
-}
+func parseInt64(s string) (int64, error) { return strconv.ParseInt(s, 10, 64) }
 
 func getEnvBool(key string, defaultVal bool) bool {
 	if val := os.Getenv(key); val != "" {
@@ -599,32 +561,16 @@ func safeDialer() *net.Dialer {
 }
 
 func getAllowedOrigin(r *http.Request) string {
-	// If wildcard, allow all
-	if len(config.AllowedOrigins) == 1 && config.AllowedOrigins[0] == "*" {
+	// "*" anywhere in the list means wildcard: never reflect an arbitrary
+	// origin, because a specific origin also gets Allow-Credentials.
+	if len(config.AllowedOrigins) == 0 || slices.Contains(config.AllowedOrigins, "*") {
 		return "*"
 	}
 
-	// Get the Origin header from the request
-	requestOrigin := r.Header.Get("Origin")
-	if requestOrigin == "" {
-		// No Origin header, return first allowed origin or *
-		if len(config.AllowedOrigins) > 0 {
-			return config.AllowedOrigins[0]
-		}
-		return "*"
+	if origin := r.Header.Get("Origin"); slices.Contains(config.AllowedOrigins, origin) {
+		return origin
 	}
 
-	// Check if the request origin is in our allowed list
-	for _, allowed := range config.AllowedOrigins {
-		if allowed == "*" || requestOrigin == allowed {
-			return requestOrigin
-		}
-	}
-
-	// If not found in allowed list, return the first allowed origin
-	// This will cause CORS to fail on the browser side
-	if len(config.AllowedOrigins) > 0 {
-		return config.AllowedOrigins[0]
-	}
-	return "*"
+	// Not in the list: the first allowed origin makes the browser refuse it.
+	return config.AllowedOrigins[0]
 }

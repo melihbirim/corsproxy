@@ -17,16 +17,13 @@ Thank you for your interest in contributing! 🎉
 ## Development Setup
 
 ```bash
-# Install Go 1.21 or later
+# Install Go 1.21 or later (CI builds with 1.27)
 # Clone the repository
 git clone https://github.com/melihbirim/corsproxy.git
-cd cors-proxy
-
-# Install dependencies
-make install
+cd corsproxy
 
 # Run the server
-make run
+go run .
 
 # Run tests
 make test
@@ -37,7 +34,7 @@ make lint
 
 ## Code Style
 
-- We use `gofmt` for formatting (runs automatically with `make build` and `make lint`)
+- We use `gofmt` for formatting (runs automatically with `make lint`)
 - Follow Go best practices and idioms
 - Keep functions small and focused
 - Add comments for exported functions
@@ -46,7 +43,7 @@ make lint
 ## Testing
 
 - All new features should include tests
-- Update `test.sh` if adding new endpoints
+- Add tests to `main_test.go` if adding new endpoints
 - Ensure all tests pass before submitting PR
 - Test with: `make test`
 

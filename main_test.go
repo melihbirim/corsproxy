@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -22,43 +24,43 @@ func TestGetEnvHelpers(t *testing.T) {
 	})
 
 	t.Run("getEnvInt", func(t *testing.T) {
-		if got := getEnvInt("UNSET_INT_XYZ", 7); got != 7 {
+		if got := getEnvParsed("UNSET_INT_XYZ", 7, strconv.Atoi); got != 7 {
 			t.Errorf("getEnvInt unset = %d, want 7", got)
 		}
 		t.Setenv("SET_INT_XYZ", "42")
-		if got := getEnvInt("SET_INT_XYZ", 7); got != 42 {
+		if got := getEnvParsed("SET_INT_XYZ", 7, strconv.Atoi); got != 42 {
 			t.Errorf("getEnvInt set = %d, want 42", got)
 		}
 		t.Setenv("BAD_INT_XYZ", "not-a-number")
-		if got := getEnvInt("BAD_INT_XYZ", 7); got != 7 {
+		if got := getEnvParsed("BAD_INT_XYZ", 7, strconv.Atoi); got != 7 {
 			t.Errorf("getEnvInt invalid = %d, want fallback 7", got)
 		}
 	})
 
 	t.Run("getEnvInt64", func(t *testing.T) {
-		if got := getEnvInt64("UNSET_INT64_XYZ", 100); got != 100 {
+		if got := getEnvParsed("UNSET_INT64_XYZ", 100, parseInt64); got != 100 {
 			t.Errorf("getEnvInt64 unset = %d, want 100", got)
 		}
 		t.Setenv("SET_INT64_XYZ", "5000000000")
-		if got := getEnvInt64("SET_INT64_XYZ", 100); got != 5000000000 {
+		if got := getEnvParsed("SET_INT64_XYZ", 100, parseInt64); got != 5000000000 {
 			t.Errorf("getEnvInt64 set = %d, want 5000000000", got)
 		}
 		t.Setenv("BAD_INT64_XYZ", "nope")
-		if got := getEnvInt64("BAD_INT64_XYZ", 100); got != 100 {
+		if got := getEnvParsed("BAD_INT64_XYZ", 100, parseInt64); got != 100 {
 			t.Errorf("getEnvInt64 invalid = %d, want fallback 100", got)
 		}
 	})
 
 	t.Run("getEnvDuration", func(t *testing.T) {
-		if got := getEnvDuration("UNSET_DUR_XYZ", 5*time.Second); got != 5*time.Second {
+		if got := getEnvParsed("UNSET_DUR_XYZ", 5*time.Second, time.ParseDuration); got != 5*time.Second {
 			t.Errorf("getEnvDuration unset = %v, want 5s", got)
 		}
 		t.Setenv("SET_DUR_XYZ", "30s")
-		if got := getEnvDuration("SET_DUR_XYZ", 5*time.Second); got != 30*time.Second {
+		if got := getEnvParsed("SET_DUR_XYZ", 5*time.Second, time.ParseDuration); got != 30*time.Second {
 			t.Errorf("getEnvDuration set = %v, want 30s", got)
 		}
 		t.Setenv("BAD_DUR_XYZ", "nonsense")
-		if got := getEnvDuration("BAD_DUR_XYZ", 5*time.Second); got != 5*time.Second {
+		if got := getEnvParsed("BAD_DUR_XYZ", 5*time.Second, time.ParseDuration); got != 5*time.Second {
 			t.Errorf("getEnvDuration invalid = %v, want fallback 5s", got)
 		}
 	})
@@ -97,6 +99,31 @@ func TestGetEnvHelpers(t *testing.T) {
 	})
 }
 
+func TestRoutes(t *testing.T) {
+	testConfig()
+	srv := httptest.NewServer(newMux())
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"status":"ok"`) {
+		t.Errorf("/health: %d %s", resp.StatusCode, body)
+	}
+
+	resp, err = http.Get(srv.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("/ without url: %d, want 400", resp.StatusCode)
+	}
+}
+
 func TestLoadConfig(t *testing.T) {
 	t.Setenv("PORT", "9090")
 	t.Setenv("RATE_LIMIT_PER_MINUTE", "50")
@@ -104,8 +131,15 @@ func TestLoadConfig(t *testing.T) {
 	t.Setenv("REQUIRE_API_KEY", "true")
 	t.Setenv("API_KEYS", "key1,key2")
 	t.Setenv("DAILY_REQUEST_LIMIT", "1000")
+	t.Setenv("MAX_REQUEST_SIZE", "2048")
+	t.Setenv("REQUEST_TIMEOUT", "7s")
+	t.Setenv("MAX_REDIRECTS", "3")
 
 	loadConfig()
+
+	if config.MaxRequestSize != 2048 || config.RequestTimeout != 7*time.Second || config.MaxRedirects != 3 {
+		t.Errorf("MaxRequestSize=%d RequestTimeout=%v MaxRedirects=%d", config.MaxRequestSize, config.RequestTimeout, config.MaxRedirects)
+	}
 
 	if config.Port != "9090" {
 		t.Errorf("Port = %q, want 9090", config.Port)
@@ -195,6 +229,24 @@ func TestGetAllowedOrigin(t *testing.T) {
 		config.AllowedOrigins = []string{"*"}
 		r := httptest.NewRequest("GET", "/", nil)
 		r.Header.Set("Origin", "https://anything.example.com")
+		if got := getAllowedOrigin(r); got != "*" {
+			t.Errorf("got %q, want *", got)
+		}
+	})
+
+	t.Run("empty list is wildcard", func(t *testing.T) {
+		config.AllowedOrigins = []string{}
+		r := httptest.NewRequest("GET", "/", nil)
+		r.Header.Set("Origin", "https://anything.example.com")
+		if got := getAllowedOrigin(r); got != "*" {
+			t.Errorf("got %q, want *", got)
+		}
+	})
+
+	t.Run("wildcard in a list is not reflected", func(t *testing.T) {
+		config.AllowedOrigins = []string{"https://a.example.com", "*"}
+		r := httptest.NewRequest("GET", "/", nil)
+		r.Header.Set("Origin", "https://evil.example.com")
 		if got := getAllowedOrigin(r); got != "*" {
 			t.Errorf("got %q, want *", got)
 		}
@@ -413,6 +465,27 @@ func TestProxyHandlerDoesNotForwardCredentialHeaders(t *testing.T) {
 	}
 	if gotCustom != "should-still-forward" {
 		t.Errorf("unrelated header should still forward, got %q", gotCustom)
+	}
+}
+
+func TestProxyHandlerForwardsPOSTBody(t *testing.T) {
+	testConfig()
+	config.AllowPrivateNetworks = true
+
+	var gotMethod, gotType, gotBody string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotMethod, gotType, gotBody = r.Method, r.Header.Get("Content-Type"), string(b)
+	}))
+	defer upstream.Close()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/?url="+url.QueryEscape(upstream.URL), strings.NewReader(`{"title":"Test"}`))
+	req.Header.Set("Content-Type", "application/json")
+	corsProxyHandler(rec, req)
+
+	if rec.Code != http.StatusOK || gotMethod != "POST" || gotType != "application/json" || gotBody != `{"title":"Test"}` {
+		t.Errorf("code=%d method=%q type=%q body=%q", rec.Code, gotMethod, gotType, gotBody)
 	}
 }
 

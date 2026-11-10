@@ -25,7 +25,7 @@ How this improves production readiness.
 
 1. Step one
 2. Step two
-3. Add tests to `test.sh`
+3. Add tests to `main_test.go`
 4. Update documentation
 
 ### Resources

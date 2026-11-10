@@ -59,7 +59,7 @@ body:
       description: What needs to be done?
       options:
         - label: Update main.go with new functionality
-        - label: Add tests to test.sh
+        - label: Add tests to main_test.go
         - label: Update README.md documentation
         - label: Add environment variables to .env.example
         - label: Ensure make lint passes
