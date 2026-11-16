@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.7] - 2026-11-16
+
+### Security
+
+- `ALLOWED_ORIGINS` with `*` next to specific origins (for example `https://app.example.com,*`) reflected any request's `Origin` back with `Access-Control-Allow-Credentials: true`, so any site could make credentialed requests through the proxy. A `*` anywhere in the list now means a plain wildcard, which never sends `Allow-Credentials`.
+
+### Fixed
+
+- When a client disconnected, the upstream request kept running until `REQUEST_TIMEOUT` (30s by default). It is now cancelled with the client's request.
+
+### Changed
+
+- Startup logs one plain line with the effective config instead of a block of emoji lines.
+- Removed `test.sh`, `Dockerfile.dev`, the release template, and most Makefile targets (`build`, `test` and `lint` remain). README trimmed to setup, config and deploy.
+- Added `bench/`, the harness behind the Cloudflare CORS Worker benchmark post.
+
 ## [1.2.6] - 2026-10-20
 
 ### Fixed
