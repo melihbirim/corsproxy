@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -299,7 +298,7 @@ func corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, config.MaxRequestSize)
 
 	// Create new request
-	proxyReq, err := http.NewRequestWithContext(context.Background(), r.Method, targetURL, r.Body)
+	proxyReq, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, r.Body)
 	if err != nil {
 		log.Printf("Error creating request: %v", err)
 		http.Error(w, fmt.Sprintf(`{"error":"Invalid URL: %s"}`, err.Error()), http.StatusBadRequest)
